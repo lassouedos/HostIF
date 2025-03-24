@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MES Sign In</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="flex items-center justify-center min-h-screen bg-gray-900">
+    <div class="w-full max-w-md p-8 space-y-6 bg-gray-800 shadow-lg rounded-2xl">
+        <!-- Company Logo -->
+        <div class="text-center">
+            <h2 class="text-2xl font-bold text-white">MES Manufacturing</h2>
+            <p class="text-gray-400 text-sm">Sign in to your account</p>
+        </div>
+
+        <!-- Sign In Form -->
+        <form class="space-y-4">
+            <div>
+                <label for="username" class="block text-sm font-medium text-gray-300">Username</label>
+                <input id="username" type="text" placeholder=" Username" required
+                    class="w-full px-4 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-300">Password</label>
+                <input id="password" type="password" placeholder="Password" required
+                    class="w-full px-4 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+
+            <div class="flex items-center justify-between">
+                <label class="flex items-center text-sm text-gray-300">
+                    <input type="checkbox" class="text-indigo-500 bg-gray-700 border-gray-600 rounded">
+                    <span class="ml-2">Remember me</span>
+                </label>
+            </div>
+
+            <button type="submit"
+                class="w-full px-4 py-2 font-semibold text-white transition bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                Sign In
+            </button>
+        </form>
+
+    </div>
+</body>
+</html>

@@ -1,5 +1,5 @@
-from fastapi import FastAPI, WebSocket, Request
-from fastapi.responses import HTMLResponse,FileResponse
+from fastapi import FastAPI, WebSocket, Request,Form
+from fastapi.responses import HTMLResponse,FileResponse,RedirectResponse
 from contextlib import asynccontextmanager
 from test import FujiHostInterface,backend_logger
 import asyncio
@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Literal
 import os
+from starlette.middleware.sessions import SessionMiddleware
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -66,6 +68,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+app.add_middleware(SessionMiddleware, secret_key="Lassoued474@")
+
+
 # Colored Logging Format
 formatter = colorlog.ColoredFormatter(
     "%(log_color)s%(asctime)s - %(levelname)s - %(message)s",
@@ -114,6 +119,11 @@ class MessageLog(BaseModel):
 # Thread-safe broadcast updates
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    cookie_header = websocket.headers.get("cookie")
+    if not cookie_header or "session" not in cookie_header:
+        await websocket.close(code=1008)
+        return
+    
     await websocket.accept()
     clients.add(websocket)
     try:
@@ -166,214 +176,241 @@ async def broadcast_updates():
             logger.error(f"Broadcast error: {str(e)}")
             await asyncio.sleep(1)
 
+# Add login routes
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return FileResponse(r"pages/signin.html")
+
+@app.post("/login")
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    print(f"Received login attempt - Username: {username}, Password: {password}")  # Debugging log
+
+    if username == "admin" and password == "1":
+        request.session["authenticated"] = True
+        print("Login successful, redirecting...")  # Debugging log
+        return RedirectResponse(url="/", status_code=303)
+    
+    print("Invalid login attempt")  # Debugging log
+    return HTMLResponse("Invalid credentials", status_code=401)
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login")
+
+
 @app.get("/", response_class=HTMLResponse)
-def read_root():
-    return f"""
-    <html>
-        <head>
-            <title>Fuji Machine Interface</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-            <style>
-                /* Custom Scrollbar Styling */
-                #log-container {{
-                    scrollbar-width: thin;
-                    scrollbar-color: #4a5568 #2d3748;
-                }}
+async def read_root(request: Request):
+    if not request.session.get("authenticated"):
+        return RedirectResponse(url="/login")
+    else :
+        return f"""
+        <html>
+            <head>
+                <title>Fuji Machine Interface</title>
+                <script src="https://cdn.tailwindcss.com"></script>
+                <style>
+                    /* Custom Scrollbar Styling */
+                    #log-container {{
+                        scrollbar-width: thin;
+                        scrollbar-color: #4a5568 #2d3748;
+                    }}
 
-                #log-container::-webkit-scrollbar {{
-                    width: 8px;
-                }}
+                    #log-container::-webkit-scrollbar {{
+                        width: 8px;
+                    }}
 
-                #log-container::-webkit-scrollbar-track {{
-                    background: #2d3748;
-                    border-radius: 4px;
-                }}
+                    #log-container::-webkit-scrollbar-track {{
+                        background: #2d3748;
+                        border-radius: 4px;
+                    }}
 
-                #log-container::-webkit-scrollbar-thumb {{
-                    background-color: #4a5568;
-                    border-radius: 4px;
-                    border: 2px solid #2d3748;
-                }}
+                    #log-container::-webkit-scrollbar-thumb {{
+                        background-color: #4a5568;
+                        border-radius: 4px;
+                        border: 2px solid #2d3748;
+                    }}
 
-                #log-container::-webkit-scrollbar-thumb:hover {{
-                    background-color: #718096;
-                }}
+                    #log-container::-webkit-scrollbar-thumb:hover {{
+                        background-color: #718096;
+                    }}
 
-                .message-received {{ border-left-color: #3b82f6; }}
-                .message-sent {{ border-left-color: #10b981; }}
-                
-                @keyframes slideIn {{
-                    from {{ transform: translateY(20px); opacity: 0; }}
-                    to {{ transform: translateY(0); opacity: 1; }}
-                }}
-            </style>
-        </head>
-        <body class="bg-gray-900 text-gray-100 min-h-screen">
-            <div class="container mx-auto px-4 py-8">
-                <div class="text-center mb-8">
-                    <h1 class="text-3xl font-bold text-indigo-400 mb-2">FUJI NXT MES Monitor</h1>
-                    <p class="text-gray-400">Real-time machine communication</p>
-                    <div class="mt-4 flex justify-center items-center space-x-4">
-                        <span id="connection-status" class="text-sm text-green-500">
-                            {hostname} | {fuji_instance.HOSTNAME if fuji_instance else 'N/A'}
-                        </span>
-                    </div>
-                </div>
-                
-                <div class="status-indicators space-y-4 mb-8">
-                    <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
-                        <div class="flex items-center space-x-3">
-                            <span class="relative flex h-3 w-3">
-                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                                <span class="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
-                            </span>
-                            <span class="text-sm">
-                                Server: <span class="font-mono text-purple-400">{socket.gethostname()}</span>
-                            </span>
-                        </div>
-                        <span class="text-xs text-gray-400">
-                            {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-                        </span>
-                    </div>
-
-                    <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between" id="fuji-connection">
-                        <div class="flex items-center space-x-3">
-                            <span class="relative flex h-3 w-3">
-                                <span id="fuji-ping" class="absolute inline-flex h-full w-full rounded-full bg-red-500"></span>
-                            </span>
-                            <span class="text-sm">
-                                Machine: 
-                                <span class="font-mono" id="fuji-status">
-                                    {fuji_instance.HOST if fuji_instance else 'N/A'}:{fuji_instance.PORT if fuji_instance else 'N/A'}
-                                </span>
-                            </span>
-                        </div>
-                        <span class="text-xs text-gray-400" id="fuji-status-text">
-                            {fuji_instance.connected if fuji_instance else False}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="bg-gray-800 rounded-lg shadow-xl p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-semibold">Communication Log</h2>
-                        <div class="flex items-center space-x-4">
-                            <span id="message-count" class="bg-gray-700 px-3 py-1 rounded-full text-sm">0 messages</span>
-                            <button onclick="clearLog()" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-sm">
-                                Clear
-                            </button>
-                        </div>
-                    </div>
-                    <div id="log-container" class="h-[600px] overflow-y-auto pr-4">
-                        <!-- Messages inserted here -->
-                    </div>
-                </div>
-            </div>
-
-            <script>
-                const ws = new WebSocket('ws://' + window.location.host + '/ws');
-                const logContainer = document.getElementById('log-container');
-                const maxMessages = 200;
-                let autoScroll = true;
-
-                function createMessageElement(msg) {{
-                    const div = document.createElement('div');
-                    div.className = `log-item p-4 rounded-lg bg-gray-700 border-l-4 mb-2 ${{ 
-                        msg.direction === 'received' ? 'message-received' : 'message-sent' 
-                    }} animate-slideIn`;
+                    .message-received {{ border-left-color: #3b82f6; }}
+                    .message-sent {{ border-left-color: #10b981; }}
                     
-                    div.innerHTML = `
-                        <div class="flex justify-between items-start mb-1">
+                    @keyframes slideIn {{
+                        from {{ transform: translateY(20px); opacity: 0; }}
+                        to {{ transform: translateY(0); opacity: 1; }}
+                    }}
+                </style>
+            </head>
+            <body class="bg-gray-900 text-gray-100 min-h-screen">
+                <div class="container mx-auto px-4 py-8">
+                    <div class="text-center mb-8">
+                        <h1 class="text-3xl font-bold text-indigo-400 mb-2">FUJI NXT MES Monitor</h1>
+                        <p class="text-gray-400">Real-time machine communication</p>
+                        <div class="mt-4 flex justify-center items-center space-x-4">
+                            <span id="connection-status" class="text-sm text-green-500">
+                                {hostname} | {fuji_instance.HOSTNAME if fuji_instance else 'N/A'}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="status-indicators space-y-4 mb-8">
+                        <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between">
                             <div class="flex items-center space-x-3">
-                                <span class="font-mono text-xs text-indigo-400">${{msg.timestamp}}</span>
-                                <span class="px-2 py-1 text-xs font-bold uppercase ${{ 
-                                    msg.direction === 'received' ? 'bg-blue-900 text-blue-300' : 'bg-green-900 text-green-300' 
-                                }} rounded">${{msg.direction}}</span>
-                                <span class="text-xs text-gray-400">${{msg.machine || ''}}</span>
+                                <span class="relative flex h-3 w-3">
+                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                    <span class="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+                                </span>
+                                <span class="text-sm">
+                                    Server: <span class="font-mono text-purple-400">{socket.gethostname()}</span>
+                                </span>
+                            </div>
+                            <span class="text-xs text-gray-400">
+                                {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                            </span>
+                        </div>
+
+                        <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between" id="fuji-connection">
+                            <div class="flex items-center space-x-3">
+                                <span class="relative flex h-3 w-3">
+                                    <span id="fuji-ping" class="absolute inline-flex h-full w-full rounded-full bg-red-500"></span>
+                                </span>
+                                <span class="text-sm">
+                                    Machine: 
+                                    <span class="font-mono" id="fuji-status">
+                                        {fuji_instance.HOST if fuji_instance else 'N/A'}:{fuji_instance.PORT if fuji_instance else 'N/A'}
+                                    </span>
+                                </span>
+                            </div>
+                            <span class="text-xs text-gray-400" id="fuji-status-text">
+                                {fuji_instance.connected if fuji_instance else False}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-800 rounded-lg shadow-xl p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-semibold">Communication Log</h2>
+                            <div class="flex items-center space-x-4">
+                                <span id="message-count" class="bg-gray-700 px-3 py-1 rounded-full text-sm">0 messages</span>
+                                <button onclick="clearLog()" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-sm">
+                                    Clear
+                                </button>
                             </div>
                         </div>
-                        <div class="font-mono text-sm text-gray-200 break-all">${{msg.raw}}</div>
-                    `;
-                    
-                    // Preserve scroll position when adding new messages
-                    div.style.overflowAnchor = "none";
-                    return div;
-                }}
+                        <div id="log-container" class="h-[600px] overflow-y-auto pr-4">
+                            <!-- Messages inserted here -->
+                        </div>
+                    </div>
+                </div>
 
-                function updateConnectionStatus(data) {{
-                    const statusElement = document.getElementById('fuji-status-text');
-                    const pingElement = document.getElementById('fuji-ping');
-                    
-                    if(data.fuji_status) {{
-                        statusElement.textContent = data.fuji_status.connected ? 'Connected' : 'Disconnected';
-                        statusElement.className = data.fuji_status.connected ? 
-                            'text-xs text-green-500' : 'text-xs text-red-500';
-                        pingElement.className = data.fuji_status.connected ? 
-                            'absolute inline-flex h-full w-full rounded-full bg-green-500 animate-ping' :
-                            'absolute inline-flex h-full w-full rounded-full bg-red-500';
+                <script>
+                    const ws = new WebSocket('ws://' + window.location.host + '/ws');
+                    const logContainer = document.getElementById('log-container');
+                    const maxMessages = 200;
+                    let autoScroll = true;
+
+                    function createMessageElement(msg) {{
+                        const div = document.createElement('div');
+                        div.className = `log-item p-4 rounded-lg bg-gray-700 border-l-4 mb-2 ${{ 
+                            msg.direction === 'received' ? 'message-received' : 'message-sent' 
+                        }} animate-slideIn`;
+                        
+                        div.innerHTML = `
+                            <div class="flex justify-between items-start mb-1">
+                                <div class="flex items-center space-x-3">
+                                    <span class="font-mono text-xs text-indigo-400">${{msg.timestamp}}</span>
+                                    <span class="px-2 py-1 text-xs font-bold uppercase ${{ 
+                                        msg.direction === 'received' ? 'bg-blue-900 text-blue-300' : 'bg-green-900 text-green-300' 
+                                    }} rounded">${{msg.direction}}</span>
+                                    <span class="text-xs text-gray-400">${{msg.machine || ''}}</span>
+                                </div>
+                            </div>
+                            <div class="font-mono text-sm text-gray-200 break-all">${{msg.raw}}</div>
+                        `;
+                        
+                        // Preserve scroll position when adding new messages
+                        div.style.overflowAnchor = "none";
+                        return div;
                     }}
-                }}
 
-                function clearLog() {{
-                    logContainer.innerHTML = '';
-                    document.getElementById('message-count').textContent = '0 messages';
-                }}
+                    function updateConnectionStatus(data) {{
+                        const statusElement = document.getElementById('fuji-status-text');
+                        const pingElement = document.getElementById('fuji-ping');
+                        
+                        if(data.fuji_status) {{
+                            statusElement.textContent = data.fuji_status.connected ? 'Connected' : 'Disconnected';
+                            statusElement.className = data.fuji_status.connected ? 
+                                'text-xs text-green-500' : 'text-xs text-red-500';
+                            pingElement.className = data.fuji_status.connected ? 
+                                'absolute inline-flex h-full w-full rounded-full bg-green-500 animate-ping' :
+                                'absolute inline-flex h-full w-full rounded-full bg-red-500';
+                        }}
+                    }}
 
-                function handleNewMessages(messages) {{
-                    const fragment = document.createDocumentFragment();
-                    
-                    messages.reverse().forEach(msg => {{
-                        const element = createMessageElement(msg);
-                        fragment.prepend(element);
+                    function clearLog() {{
+                        logContainer.innerHTML = '';
+                        document.getElementById('message-count').textContent = '0 messages';
+                    }}
+
+                    function handleNewMessages(messages) {{
+                        const fragment = document.createDocumentFragment();
+                        
+                        messages.reverse().forEach(msg => {{
+                            const element = createMessageElement(msg);
+                            fragment.prepend(element);
+                        }});
+
+                        logContainer.prepend(fragment);
+
+                        // Remove excess messages
+                        while(logContainer.children.length > maxMessages) {{
+                            logContainer.lastChild.remove();
+                        }}
+
+                        // Update counter
+                        document.getElementById('message-count').textContent = 
+                            `${{logContainer.children.length}} messages`;
+
+                        // Auto-scroll if enabled
+                        if(autoScroll && messages.length > 0) {{
+                            logContainer.scrollTo({{
+                                top: 0,
+                                behavior: 'auto'
+                            }});
+                        }}
+                    }}
+
+                    ws.onmessage = (event) => {{
+                        const data = JSON.parse(event.data);
+                        updateConnectionStatus(data);
+
+                        if(data.message_log) {{
+                            logContainer.innerHTML = '';
+                            handleNewMessages(data.message_log);
+                        }}
+
+                        if(data.new_messages) {{
+                            handleNewMessages(data.new_messages);
+                        }}
+                    }};
+
+                    // Track scroll position for auto-scroll management
+                    logContainer.addEventListener('scroll', () => {{
+                        autoScroll = logContainer.scrollTop === 0;
                     }});
 
-                    logContainer.prepend(fragment);
-
-                    // Remove excess messages
-                    while(logContainer.children.length > maxMessages) {{
-                        logContainer.lastChild.remove();
-                    }}
-
-                    // Update counter
-                    document.getElementById('message-count').textContent = 
-                        `${{logContainer.children.length}} messages`;
-
-                    // Auto-scroll if enabled
-                    if(autoScroll && messages.length > 0) {{
-                        logContainer.scrollTo({{
-                            top: 0,
-                            behavior: 'auto'
-                        }});
-                    }}
-                }}
-
-                ws.onmessage = (event) => {{
-                    const data = JSON.parse(event.data);
-                    updateConnectionStatus(data);
-
-                    if(data.message_log) {{
-                        logContainer.innerHTML = '';
-                        handleNewMessages(data.message_log);
-                    }}
-
-                    if(data.new_messages) {{
-                        handleNewMessages(data.new_messages);
-                    }}
-                }};
-
-                // Track scroll position for auto-scroll management
-                logContainer.addEventListener('scroll', () => {{
-                    autoScroll = logContainer.scrollTop === 0;
-                }});
-
-                ws.onclose = () => {{
-                    document.getElementById('fuji-status-text').textContent = 'Disconnected';
-                    document.getElementById('fuji-status-text').className = 'text-xs text-red-500';
-                }};
-            </script>
-        </body>
-    </html>
-    """
+                    ws.onclose = () => {{
+                        document.getElementById('fuji-status-text').textContent = 'Disconnected';
+                        document.getElementById('fuji-status-text').className = 'text-xs text-red-500';
+                    }};
+                </script>
+            </body>
+        </html>
+        """
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     favicon_path = os.path.join(os.getcwd(), "static", "favicon.ico")

@@ -38,7 +38,7 @@ class ProductionLog(Base):
 
 class ErrorLog(Base):
     __tablename__ = 'error_logs'
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True,autoincrement=True)
     timestamp = Column(DateTime)
     error_code = Column(String)
     module = Column(String)
@@ -65,6 +65,7 @@ class FujiHostInterface:
         self.HOST = '192.168.100.231'  # Central Server Lite IP
         self.PORT = 30040
         self.HOSTNAME = None
+        self.current_day = datetime.now().strftime("%Y%m%d")
         # Initialize production state with proper structure
         self.production_state = {
             'current_program': None,
@@ -136,7 +137,6 @@ class FujiHostInterface:
         session = self.Session()
         try:
             log = ErrorLog(
-                id=id,
                 timestamp=datetime.now(),
                 error_code=error_code,
                 module=module,
@@ -271,7 +271,12 @@ class FujiHostInterface:
                 data = self.sock.recv(msg_length)
                 if not data:
                     break
+                
+                today = datetime.now().strftime("%Y%m%d")
 
+                if today != self.current_day:
+                    self._check_daily_rotation()
+                    self.current_day = today
                 # Parse message (strip STX/ETX)
                 decoded = data.decode().strip("\x02\x03")
                 backend_logger.info(f"Received: {decoded}")
@@ -285,7 +290,7 @@ class FujiHostInterface:
                 self.production_state['message_log'].append(log_entry)
                 if len(self.production_state['message_log']) > 10000:
                     self.production_state['message_log'].pop(0)              
-
+                
                 # Handle message types
                 parts = decoded.split("\t")
                 command= parts[0]

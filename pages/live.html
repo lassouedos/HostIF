@@ -3,9 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SVG with img Tag</title>
+    <title>MES Machine Status</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .machine { transition: fill 0.3s ease-in-out; }
+    </style>
 </head>
-<body>
-    <h1>My SVG Image</h1>
-    <img src="Design sans titre.png" alt="Description of SVG" style="width: 100; height: 100;" /></body>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <h1 class="text-2xl font-bold mb-6">NXT Machine Status</h1>
+    
+    <div class="bg-white p-6 shadow-lg rounded-lg">
+        <!-- SVG Machine Representation -->
+        <svg id="machine" class="machine w-64 h-64" viewBox="0 0 100 200" xmlns="http://www.w3.org/2000/svg" fill="#00bfff">
+            <rect x="10" y="10" width="80" height="180" rx="8" ry="8" stroke="black" stroke-width="2"/>
+            <rect x="30" y="30" width="40" height="20" fill="#ccc" stroke="black" stroke-width="1"/>
+            <circle cx="50" cy="160" r="10" fill="#ccc" stroke="black" stroke-width="1"/>
+        </svg>
+        
+        <!-- Dropdown for Machine State -->
+        <div class="mt-4">
+            <label for="state" class="block text-sm font-medium">Select Machine State:</label>
+            <select id="state" class="mt-2 p-2 border rounded">
+                <option value="idle">Idle</option>
+                <option value="running">Running</option>
+                <option value="error">Error</option>
+                <option value="maintenance">Maintenance</option>
+            </select>
+        </div>
+    </div>
+    
+    <script>
+        const machine = document.getElementById("machine");
+        const stateSelector = document.getElementById("state");
+        
+        stateSelector.addEventListener("change", () => {
+            const state = stateSelector.value;
+            switch(state) {
+                case "idle":
+                    machine.setAttribute("fill", "#00bfff"); // Blue
+                    break;
+                case "running":
+                    machine.setAttribute("fill", "#28a745"); // Green
+                    break;
+                case "error":
+                    machine.setAttribute("fill", "#dc3545"); // Red
+                    break;
+                case "maintenance":
+                    machine.setAttribute("fill", "#ffc107"); // Yellow
+                    break;
+            }
+        });
+    </script>
+</body>
 </html>

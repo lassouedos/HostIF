@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, Request,Form
 from fastapi.responses import HTMLResponse,FileResponse,RedirectResponse
 from contextlib import asynccontextmanager
 from test import FujiHostInterface,backend_logger
+from config import SECRET_KEY
 import asyncio
 import logging
 import time
@@ -68,7 +69,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(SessionMiddleware, secret_key="Lassoued474@")
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 
 
 # Colored Logging Format
@@ -136,7 +137,7 @@ async def websocket_endpoint(websocket: WebSocket):
             with connection_lock:
                 all_messages = fuji_instance.production_state.get('message_log', [])
                 # Send last 100 messages in reverse order (newest first)
-                initial_data['message_log'] = all_messages[-100:][::-1]
+                initial_data['message_log'] = all_messages[-10000:][::-1]
         
         await websocket.send_json(initial_data)
         
@@ -187,7 +188,10 @@ async def login(request: Request, username: str = Form(...), password: str = For
 
     if username == "admin" and password == "1":
         request.session["authenticated"] = True
-        print("Login successful, redirecting...")  # Debugging log
+        request.session["username"] = username  # Store username
+
+        print(f"Login successful,{username} redirecting...")  # Debugging log
+        backend_logger.info(f"Login successful,{username} redirecting...")
         return RedirectResponse(url="/", status_code=303)
     
     print("Invalid login attempt")  # Debugging log
@@ -199,12 +203,19 @@ async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login")
 
+@app.get("/check-session")
+async def check_session(request: Request):
+    return {
+        "authenticated": request.session.get("authenticated", False),
+        "username": request.session.get("username", "")
+    }
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     if not request.session.get("authenticated"):
         return RedirectResponse(url="/login")
     else :
+        username = request.session.get("username", "Guest")
         return f"""
         <html>
             <head>
@@ -246,6 +257,17 @@ async def read_root(request: Request):
                 </style>
             </head>
             <body class="bg-gray-900 text-gray-100 min-h-screen">
+                <!-- Navigation Bar -->
+                <nav class="bg-gray-800 p-4 flex justify-between items-center">
+                    <div class="flex items-center space-x-4">
+                        <h1 class="text-xl font-bold text-indigo-400">FUJI NXT MES Monitor</h1>
+                        <span class="text-gray-400">|</span>
+                        <span class="text-gray-300">Logged in as: {username}</span>
+                    </div>
+                    <a href="/logout" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-semibold">
+                        Logout
+                    </a>
+                </nav>
                 <div class="container mx-auto px-4 py-8">
                     <div class="text-center mb-8">
                         <h1 class="text-3xl font-bold text-indigo-400 mb-2">FUJI NXT MES Monitor</h1>

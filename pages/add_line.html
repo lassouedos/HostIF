@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Production Line</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes slideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .animate-slideIn {
+            animation: slideIn 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <!-- Error Container -->
+    <div id="error-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-96 max-w-full"></div>
+
+    <!-- Navigation -->
+    <nav class="bg-gray-800 p-4 flex justify-between items-center">
+        <div class="flex items-center space-x-4">
+            <h1 class="text-xl font-bold text-indigo-400">Add New Production Line</h1>
+        </div>
+        <a href="/" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">
+            Back to Dashboard
+        </a>
+    </nav>
+
+    <div class="container mx-auto px-4 py-8">
+        <form id="config-form" class="space-y-6 max-w-4xl mx-auto" onsubmit="return validateForm()">
+            <!-- Section 1: Basic Configuration -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-lg font-semibold mb-4 text-indigo-400">Basic Configuration</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Line Name *</label>
+                        <input type="text" name="line_name" required 
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg"
+                            pattern="[A-Za-z0-9_\-]+" title="Alphanumeric characters and hyphens only">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Machine Name *</label>
+                        <input type="text" name="machine_name" required
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Machine Type *</label>
+                        <select name="machine_type" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                            <option value="">Select Type</option>
+                            <option value="NXT">NXT</option>
+                            <option value="AIMEX">AIMEX</option>
+                            <option value="NXTR">NXTR</option>
+                            <option value="XPF">XPF</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Number of Modules *</label>
+                        <input type="number" name="nbr_modules" required min="1" max="10"
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: Network Configuration -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-lg font-semibold mb-4 text-indigo-400">Network Configuration</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Server Line IP *</label>
+                        <input type="text" name="server_ip" required 
+                            pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg"
+                            placeholder="192.168.1.1">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">HostIF Port *</label>
+                        <input type="number" name="hostif_port" required min="1" max="65535"
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Kitting Station Port</label>
+                        <input type="number" name="kitting_port" min="1" max="65535"
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Database Configuration -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-lg font-semibold mb-4 text-indigo-400">Database Configuration</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Database Type *</label>
+                        <select name="db_type" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                            <option value="">Select Database</option>
+                            <option value="oracle">Oracle</option>
+                            <option value="sqlserver">SQL Server</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">NeximDB Name *</label>
+                        <input type="text" name="nexim_dbname" required
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">NeximDB Superuser Name *</label>
+                        <input type="text" name="nexim_db_superusername" required
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">NeximDB Superuser Password</label>
+                        <div class="relative">
+                            <input type="password" name="nexim_db_superuserpwd" id="nexim_pwd"
+                                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg pr-10">
+                            <button type="button" onclick="togglePassword('nexim_pwd')"
+                                class="absolute right-2 top-2 text-gray-400 hover:text-gray-300">
+                                <span id="nexim_pwd_icon">👁️🗨️</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">FujiDB Name *</label>
+                        <input type="text" name="fuji_dbname" required
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">FujiDB Admin Name *</label>
+                        <input type="text" name="fuji_dbadminname" required
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">FujiDB Admin Password *</label>
+                        <div class="relative">
+                            <input type="password" name="fuji_dbadminpwd" id="fuji_admin_pwd"
+                                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg pr-10">
+                            <button type="button" onclick="togglePassword('fuji_admin_pwd')"
+                                class="absolute right-2 top-2 text-gray-400 hover:text-gray-300">
+                                <span id="fuji_admin_pwd_icon">👁️🗨️</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">FujiDB User Name *</label>
+                        <input type="text" name="fuji_dbusername" required
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">FujiDB User Password *</label>
+                        <div class="relative">
+                            <input type="password" name="fuji_dbuserpwd" id="fuji_user_pwd"
+                                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg pr-10">
+                            <button type="button" onclick="togglePassword('fuji_user_pwd')"
+                                class="absolute right-2 top-2 text-gray-400 hover:text-gray-300">
+                                <span id="fuji_user_pwd_icon">👁️🗨️</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 4: Profiler Configuration -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-lg font-semibold mb-4 text-indigo-400">Profiler Configuration</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Profiler Name</label>
+                        <input type="text" name="profilername" 
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Profiler Admin Name</label>
+                        <input type="text" name="profiler_adminname"
+                            class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Profiler Admin Password</label>
+                        <div class="relative">
+                            <input type="password" name="profiler_adminpwd" id="profiler_pwd"
+                                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg pr-10">
+                            <button type="button" onclick="togglePassword('profiler_pwd')"
+                                class="absolute right-2 top-2 text-gray-400 hover:text-gray-300">
+                                <span id="profiler_pwd_icon">👁️🗨️</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-4">
+                <button type="reset" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg">
+                    Reset
+                </button>
+                <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg">
+                    Save Configuration
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const icon = document.getElementById(`${inputId}_icon`);
+            if (input.type === "password") {
+                input.type = "text";
+                icon.textContent = '👁️';
+            } else {
+                input.type = "password";
+                icon.textContent = '👁️🗨️';
+            }
+        }
+
+        async function submitForm(data) {
+            try {
+                const response = await fetch('/save-line-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams(data)
+                });
+
+                const result = await response.json();
+                
+                if(response.ok) {
+                    showAlert('Configuration saved successfully!', 'success');
+                    setTimeout(() => window.location.href = '/', 1500);
+                } else {
+                    const errors = result.detail || [];
+                    const errorMessages = Array.isArray(errors) 
+                        ? errors.map(e => `${e.loc[1]}: ${e.msg}`).join('\n')
+                        : 'Error saving configuration';
+                    showAlert(`Validation errors:\n${errorMessages}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('An error occurred. Please try again.', 'error');
+            }
+        }
+
+        function showAlert(message, type = 'info') {
+            const container = document.getElementById('error-container');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `mb-2 p-4 rounded-lg shadow-lg animate-slideIn ${
+                type === 'success' ? 'bg-green-600' : 
+                type === 'error' ? 'bg-red-600' : 'bg-blue-600'
+            } text-white`;
+            alertDiv.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <div class="whitespace-pre-line">${message}</div>
+                    <button onclick="this.parentElement.parentElement.remove()" 
+                            class="ml-4 text-xl hover:text-gray-200">&times;</button>
+                </div>
+            `;
+            container.appendChild(alertDiv);
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+
+        function validateForm() {
+            const form = document.getElementById('config-form');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return false;
+            }
+            
+            const formData = new FormData(form);
+            submitForm(formData);
+            return false;
+        }
+    </script>
+</body>
+</html>

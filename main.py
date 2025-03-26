@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, Request,Form
 from fastapi.responses import HTMLResponse,FileResponse,RedirectResponse
 from contextlib import asynccontextmanager
 from test import FujiHostInterface,backend_logger
-from config import SECRET_KEY
+from configuration import SECRET_KEY
 import asyncio
 import logging
 import time
@@ -15,6 +15,9 @@ from datetime import datetime
 from typing import Literal
 import os
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi import HTTPException
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -24,6 +27,8 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+
 
 # Configure API Request Logger
 api_logger = logging.getLogger("api_logger")
@@ -210,6 +215,92 @@ async def check_session(request: Request):
         "username": request.session.get("username", "")
     }
 
+# Add route to serve the form
+@app.get("/add-line", response_class=HTMLResponse)
+async def add_line_page(request: Request):
+    if not request.session.get("authenticated"):
+        return RedirectResponse(url="/login")
+    return FileResponse(r"pages/add_line.html")
+
+# Add route to handle form submission
+@app.post("/save-line-config")
+async def save_line_config(request: Request,
+    line_name: str = Form(...),
+    machine_name: str = Form(...),
+    machine_type: str = Form(...),
+    nbr_modules: int = Form(...),  # Changed from Number_module
+    server_ip: str = Form(...),
+    hostif_port: int = Form(...),
+    kitting_port: str = Form(None),  # Make optional
+    db_type: str = Form(...),
+    nexim_dbname: str = Form(...),
+    nexim_db_superusername: str = Form(...),  # Changed from nexim_superuser
+    nexim_db_superuserpwd: str = Form(...),  # Changed from nexim_superpass
+    fuji_dbname: str = Form(...),  # Changed from fujidb_name
+    fuji_dbadminname: str = Form(...),  # Changed from fujidb_admin
+    fuji_dbadminpwd: str = Form(...),  # Changed from fujidb_adminpass
+    fuji_dbusername: str = Form(...),  # Changed from fujidb_user
+    fuji_dbuserpwd: str = Form(...),  # Changed from fujidb_userpass
+    profilername: str = Form(None),
+    profiler_adminname: str = Form(None),
+    profiler_adminpwd: str = Form(None)):
+    
+
+
+
+    try :
+        # Validate database type
+        if db_type.lower() not in ["oracle", "sqlserver"]:
+            raise HTTPException(status_code=400, detail="Invalid database type")
+        # Create config directory if not exists
+        CONFIG_DIR = Path("config")
+        CONFIG_DIR.mkdir(exist_ok=True)
+        # Create XML structure
+        root = ET.Element("ProductionLineConfig")
+        
+        # Basic Info
+        basic = ET.SubElement(root, "Basic")
+        ET.SubElement(basic, "LineName").text = line_name
+        ET.SubElement(basic, "MachineName").text = machine_name
+        ET.SubElement(basic, "MachineType").text = machine_type
+        ET.SubElement(basic,"Number_module").text=str(nbr_modules)
+        # Network
+        network = ET.SubElement(root, "Network")
+        ET.SubElement(network, "ServerIP").text = server_ip
+        ET.SubElement(network, "HostIFPort").text = str(hostif_port)
+        ET.SubElement(network, "KittingPort").text = str(kitting_port)
+        
+        # Databases
+        dbs = ET.SubElement(root, "Databases")
+        nexim = ET.SubElement(dbs, "NeximDB")
+        ET.SubElement(nexim, "Type").text = db_type
+        ET.SubElement(nexim, "Name").text = nexim_dbname
+        ET.SubElement(nexim, "SuperUser").text = nexim_db_superusername
+        ET.SubElement(nexim, "Password").text = nexim_db_superuserpwd
+        
+        fujidb = ET.SubElement(dbs, "FujiDB")
+        ET.SubElement(fujidb, "Name").text = fuji_dbname
+        ET.SubElement(fujidb, "AdminUser").text = fuji_dbadminname
+        ET.SubElement(fujidb, "AdminPassword").text = fuji_dbadminpwd
+        ET.SubElement(fujidb, "AppUser").text = fuji_dbusername
+        ET.SubElement(fujidb, "AppPassword").text = fuji_dbuserpwd
+        
+        profiler = ET.SubElement(root, "Profiler")
+        if profilername:
+            ET.SubElement(profiler, "Name").text = profilername
+            ET.SubElement(profiler, "AdminUser").text = profiler_adminname
+            ET.SubElement(profiler, "AdminPassword").text = profiler_adminpwd
+        
+        # Save to file
+        filename = CONFIG_DIR / "Line_config.xml"
+        tree = ET.ElementTree(root)
+        tree.write(filename, encoding="utf-8", xml_declaration=True)
+        
+        return {"status": "success", "message": "Configuration saved"}
+    except Exception as e:
+        backend_logger.error(f"XML generation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     if not request.session.get("authenticated"):
@@ -264,9 +355,14 @@ async def read_root(request: Request):
                         <span class="text-gray-400">|</span>
                         <span class="text-gray-300">Logged in as: {username}</span>
                     </div>
-                    <a href="/logout" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-semibold">
-                        Logout
-                    </a>
+                    <div class="flex items-center space-x-4">
+                        <a href="/add-line" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-sm font-semibold">
+                            Add Line
+                        </a>
+                        <a href="/logout" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-semibold">
+                            Logout
+                        </a>
+                    </div>
                 </nav>
                 <div class="container mx-auto px-4 py-8">
                     <div class="text-center mb-8">

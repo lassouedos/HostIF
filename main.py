@@ -1,5 +1,5 @@
 from fastapi import FastAPI, WebSocket, Request,Form
-from fastapi.responses import HTMLResponse,FileResponse,RedirectResponse
+from fastapi.responses import HTMLResponse,FileResponse,RedirectResponse,JSONResponse
 from contextlib import asynccontextmanager
 from test import FujiHostInterface,backend_logger
 from configuration import SECRET_KEY
@@ -18,6 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi import HTTPException
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from urllib.parse import quote
 
 # Configure logging
 logging.basicConfig(
@@ -28,7 +29,7 @@ logging.basicConfig(
     ]
 )
 
-
+CONFIG_DIR = Path("config")
 
 # Configure API Request Logger
 api_logger = logging.getLogger("api_logger")
@@ -301,6 +302,174 @@ async def save_line_config(request: Request,
         backend_logger.error(f"XML generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/lines", response_class=HTMLResponse)
+async def list_lines(request: Request):
+    if not request.session.get("authenticated"):
+        return RedirectResponse(url="/login")
+    
+    lines = []
+    for file in CONFIG_DIR.glob("*.xml"):
+        lines.append(file.stem.replace("_config", ""))
+    
+    return f"""
+    <html>
+        <head>
+            <title>Configured Lines</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="bg-gray-900 text-gray-100 min-h-screen">
+            <nav class="bg-gray-800 p-4">
+                <div class="container mx-auto flex justify-between items-center">
+                    <h1 class="text-xl font-bold">Configured Production Lines</h1>
+                    <a href="/" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg">Back</a>
+                </div>
+            </nav>
+            <div class="container mx-auto px-4 py-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {"".join([
+                        f'''<div class="bg-gray-800 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold mb-2">{line}</h3>
+                            <a href="/edit-line?line={quote(line)} 
+                               class="text-indigo-400 hover:text-indigo-300">Edit</a>
+                        </div>'''
+                        for line in lines
+                    ])}
+                </div>
+            </div>
+        </body>
+    </html>
+    """
+
+@app.get("/get-line-config")
+async def get_line_config(line: str):
+    try:
+        file_path = CONFIG_DIR / "line_config.xml"
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Configuration not found")
+        
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+        
+        config = {
+            "line_name": root.findtext("Basic/LineName"),
+            "machine_name": root.findtext("Basic/MachineName"),
+            "machine_type": root.findtext("Basic/MachineType"),
+            "nbr_modules": root.findtext("Basic/Number_module"),
+            "server_ip": root.findtext("Network/ServerIP"),
+            "hostif_port": root.findtext("Network/HostIFPort"),
+            "kitting_port": root.findtext("Network/KittingPort"),
+            "db_type": root.findtext("Databases/NeximDB/Type"),
+            "nexim_dbname": root.findtext("Databases/NeximDB/Name"),
+            "nexim_db_superusername": root.findtext("Databases/NeximDB/SuperUser"),
+            "nexim_db_superuserpwd": root.findtext("Databases/NeximDB/Password"),
+            "fuji_dbname": root.findtext("Databases/FujiDB/Name"),
+            "fuji_dbadminname": root.findtext("Databases/FujiDB/AdminUser"),
+            "fuji_dbadminpwd": root.findtext("Databases/FujiDB/AdminPassword"),
+            "fuji_dbusername": root.findtext("Databases/FujiDB/AppUser"),
+            "fuji_dbuserpwd": root.findtext("Databases/FujiDB/AppPassword"),
+            "profilername": root.findtext("Profiler/Name"),
+            "profiler_adminname": root.findtext("Profiler/AdminUser"),
+            "profiler_adminpwd": root.findtext("Profiler/AdminPassword")
+        }
+        
+        return JSONResponse(content=config)
+    
+    except Exception as e:
+        logger.error(f"Error loading config: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error loading configuration")
+
+@app.get("/edit-line", response_class=HTMLResponse)
+async def edit_line_page(request: Request, line: str):
+    if not request.session.get("authenticated"):
+        return RedirectResponse(url="/login")
+    return FileResponse(r"pages/edit_line.html")
+
+
+    
+@app.post("/update-line-config")
+async def update_line_config(
+    request: Request,
+    original_line_name: str = Form(...),
+    line_name: str = Form(...),
+    machine_name: str = Form(...),
+    machine_type: str = Form(...),
+    nbr_modules: int = Form(...),
+    server_ip: str = Form(...),
+    hostif_port: int = Form(...),
+    kitting_port: str = Form(None),
+    db_type: str = Form(...),
+    nexim_dbname: str = Form(...),
+    nexim_db_superusername: str = Form(...),
+    nexim_db_superuserpwd: str = Form(...),
+    fuji_dbname: str = Form(...),
+    fuji_dbadminname: str = Form(...),
+    fuji_dbadminpwd: str = Form(...),
+    fuji_dbusername: str = Form(...),
+    fuji_dbuserpwd: str = Form(...),
+    profilername: str = Form(None),
+    profiler_adminname: str = Form(None),
+    profiler_adminpwd: str = Form(None)
+):
+    try:
+        # Validate database type
+        if db_type.lower() not in ["oracle", "sqlserver"]:
+            raise HTTPException(status_code=400, detail="Invalid database type")
+
+        # Delete old config if name changed
+        if original_line_name != line_name:
+            old_file = CONFIG_DIR / f"{original_line_name}_config.xml"
+            if old_file.exists():
+                old_file.unlink()
+
+        # Create XML structure
+        root = ET.Element("ProductionLineConfig")
+        
+        # Basic Info
+        basic = ET.SubElement(root, "Basic")
+        ET.SubElement(basic, "LineName").text = line_name
+        ET.SubElement(basic, "MachineName").text = machine_name
+        ET.SubElement(basic, "MachineType").text = machine_type
+        ET.SubElement(basic, "Number_module").text = str(nbr_modules)
+        
+        # Network
+        network = ET.SubElement(root, "Network")
+        ET.SubElement(network, "ServerIP").text = server_ip
+        ET.SubElement(network, "HostIFPort").text = str(hostif_port)
+        ET.SubElement(network, "KittingPort").text = str(kitting_port)
+        
+        # Databases
+        dbs = ET.SubElement(root, "Databases")
+        nexim = ET.SubElement(dbs, "NeximDB")
+        ET.SubElement(nexim, "Type").text = db_type
+        ET.SubElement(nexim, "Name").text = nexim_dbname
+        ET.SubElement(nexim, "SuperUser").text = nexim_db_superusername
+        ET.SubElement(nexim, "Password").text = nexim_db_superuserpwd
+        
+        fujidb = ET.SubElement(dbs, "FujiDB")
+        ET.SubElement(fujidb, "Name").text = fuji_dbname
+        ET.SubElement(fujidb, "AdminUser").text = fuji_dbadminname
+        ET.SubElement(fujidb, "AdminPassword").text = fuji_dbadminpwd
+        ET.SubElement(fujidb, "AppUser").text = fuji_dbusername
+        ET.SubElement(fujidb, "AppPassword").text = fuji_dbuserpwd
+        
+        # Profiler
+        profiler = ET.SubElement(root, "Profiler")
+        if profilername:
+            ET.SubElement(profiler, "Name").text = profilername
+            ET.SubElement(profiler, "AdminUser").text = profiler_adminname
+            ET.SubElement(profiler, "AdminPassword").text = profiler_adminpwd
+        
+        # Save to file with correct name
+        filename = CONFIG_DIR / f"{line_name}_config.xml"
+        tree = ET.ElementTree(root)
+        tree.write(filename, encoding="utf-8", xml_declaration=True)
+        
+        return RedirectResponse(url="/lines", status_code=303)
+    
+    except Exception as e:
+        logger.error(f"Error updating config: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error updating configuration")
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     if not request.session.get("authenticated"):
@@ -358,6 +527,9 @@ async def read_root(request: Request):
                     <div class="flex items-center space-x-4">
                         <a href="/add-line" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-sm font-semibold">
                             Add Line
+                        </a>
+                        <a href="/lines" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-sm font-semibold">
+                            Edit Line
                         </a>
                         <a href="/logout" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-semibold">
                             Logout
